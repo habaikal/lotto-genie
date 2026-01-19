@@ -73,7 +73,7 @@ export default function LottoGenius() {
     // Auto-load CSV on mount
     useEffect(() => {
         // Use imports.meta.env.BASE_URL to respect the 'base' config in vite.config.ts
-        const csvPath = `${import.meta.env.BASE_URL}lotto_results.csv`;
+        const csvPath = `${import.meta.env.BASE_URL}lotto_results.csv?v=${new Date().getTime()}`;
         fetch(csvPath)
             .then(res => {
                 if (!res.ok) throw new Error("Failed to load CSV");
