@@ -62,6 +62,7 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: any) => (
 export default function LottoGenius() {
     // State
     const [historyData, setHistoryData] = useState<LottoDraw[]>([]);
+    const [lastRound, setLastRound] = useState<number>(0);
     const [tolerance, setTolerance] = useState(0.05); // 5% default
     const [generatedGames, setGeneratedGames] = useState<Game[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -73,7 +74,7 @@ export default function LottoGenius() {
     // Auto-load CSV on mount
     useEffect(() => {
         // Use imports.meta.env.BASE_URL to respect the 'base' config in vite.config.ts
-        const csvPath = `${import.meta.env.BASE_URL}lotto_results.csv`;
+        const csvPath = `${import.meta.env.BASE_URL}lotto_results.csv?v=${new Date().getTime()}`;
         fetch(csvPath)
             .then(res => {
                 if (!res.ok) throw new Error("Failed to load CSV");
@@ -115,6 +116,7 @@ export default function LottoGenius() {
     const processCSV = (text: string) => {
         const lines = text.split('\n');
         const parsedData: LottoDraw[] = [];
+        let maxRound = 0;
 
         // Format: Round, N1, N2, N3, N4, N5, N6, Bonus
         // We only want N1..N6 (indices 1..6)
@@ -128,6 +130,11 @@ export default function LottoGenius() {
 
             // Check if we have enough columns (at least 7: Round + 6 numbers)
             if (cols.length >= 7) {
+                const round = parseInt(cols[0]);
+                if (!isNaN(round) && round > maxRound) {
+                    maxRound = round;
+                }
+
                 // Try parsing columns 1 to 6
                 const potentialNumbers = cols.slice(1, 7).map(Number);
 
@@ -142,9 +149,10 @@ export default function LottoGenius() {
 
         if (parsedData.length > 0) {
             setHistoryData(parsedData);
+            setLastRound(maxRound);
             // Only alert if manually triggered or meaningful change? 
             // Let's avoid annoying alerts on auto-load, but good to know it worked.
-            console.log(`Loaded ${parsedData.length} records.`);
+            console.log(`Loaded ${parsedData.length} records. Last Round: ${maxRound}`);
         }
     };
 
@@ -299,7 +307,7 @@ export default function LottoGenius() {
                                         className="hidden"
                                     />
                                     <div className="px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-xs flex items-center text-slate-400 font-mono">
-                                        Records: {historyData.length}
+                                        Records: {lastRound || historyData.length}
                                     </div>
                                 </div>
                             </div>
