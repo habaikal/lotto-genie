@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, RefreshCw, BarChart2, ShieldCheck, Zap, TrendingUp, Settings } from 'lucide-react';
+import { Upload, RefreshCw, BarChart2, ShieldCheck, Zap, TrendingUp, Settings, Download, Share, Trash2 } from 'lucide-react';
 
 /**
  * LOTTO GENIUS - 통계적 균형 및 비인기 조합 필터 기반 로또 번호 생성기
@@ -7,12 +7,32 @@ import { Upload, RefreshCw, BarChart2, ShieldCheck, Zap, TrendingUp, Settings } 
 
 // --- Constants & Utilities ---
 
-const getBallColor = (num: number) => {
-    if (num <= 10) return 'bg-yellow-500 border-yellow-300 shadow-yellow-500/50';
-    if (num <= 20) return 'bg-blue-500 border-blue-300 shadow-blue-500/50';
-    if (num <= 30) return 'bg-red-500 border-red-300 shadow-red-500/50';
-    if (num <= 40) return 'bg-slate-500 border-slate-300 shadow-slate-500/50';
-    return 'bg-emerald-500 border-emerald-300 shadow-emerald-500/50';
+const getBallStyle = (num: number) => {
+    if (num <= 10) return {
+        bg: 'from-amber-300 via-yellow-500 to-amber-600',
+        shadow: 'shadow-amber-500/50',
+        text: 'text-yellow-900 border-amber-400/50'
+    };
+    if (num <= 20) return {
+        bg: 'from-blue-300 via-blue-500 to-blue-700',
+        shadow: 'shadow-blue-500/50',
+        text: 'text-white border-blue-400/50'
+    };
+    if (num <= 30) return {
+        bg: 'from-red-300 via-red-500 to-red-700',
+        shadow: 'shadow-red-500/50',
+        text: 'text-white border-red-400/50'
+    };
+    if (num <= 40) return {
+        bg: 'from-slate-300 via-slate-500 to-slate-700',
+        shadow: 'shadow-slate-500/50',
+        text: 'text-white border-slate-400/50'
+    };
+    return {
+        bg: 'from-emerald-300 via-emerald-500 to-emerald-700',
+        shadow: 'shadow-emerald-500/50',
+        text: 'text-white border-emerald-400/50'
+    };
 };
 
 // Types
@@ -31,17 +51,35 @@ type Game = {
 // --- Components ---
 
 const LottoBall = ({ number, animate }: { number: number, animate?: boolean }) => {
+    const style = getBallStyle(number);
+
     return (
-        <div
-            className={`
-        w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center 
-        text-white font-bold text-lg sm:text-xl border-2 shadow-lg
-        ${getBallColor(number)}
-        ${animate ? 'animate-bounce-short' : ''}
-        transition-all duration-300 transform hover:scale-110
-      `}
-        >
-            {number}
+        <div className={`relative group ${animate ? 'animate-bounce-short' : ''} transition-transform duration-300 hover:scale-110 z-10`}>
+            {/* Main Ball Body */}
+            <div
+                className={`
+                    w-10 h-10 sm:w-12 sm:h-12 rounded-full 
+                    flex items-center justify-center 
+                    font-bold text-lg sm:text-xl font-mono
+                    bg-gradient-to-br ${style.bg}
+                    box-shadow-2xl shadow-lg ${style.shadow}
+                    relative overflow-hidden
+                    border border-white/20
+                    ${style.text}
+                `}
+                style={{
+                    boxShadow: 'inset -5px -5px 10px rgba(0,0,0,0.3), inset 2px 2px 5px rgba(255,255,255,0.3)',
+                }}
+            >
+                {/* Specular Highlight (The "Shine") */}
+                <div className="absolute top-1 left-2 w-4 h-2 bg-white/40 blur-sm rounded-full transform -rotate-45"></div>
+
+                {/* Text Shadow for better contrast */}
+                <span className="drop-shadow-md z-10 filter">{number}</span>
+            </div>
+
+            {/* Ground Reflection/Shadow */}
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-black/30 blur-md rounded-full -z-10 group-hover:scale-90 transition-transform duration-300"></div>
         </div>
     );
 };
@@ -68,6 +106,7 @@ export default function LottoGenius() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [stats, setStats] = useState<Stats>({ avgSum: 0, hotNumbers: [] });
     const [logs, setLogs] = useState<string[]>([]);
+    const [targetGameCount, setTargetGameCount] = useState<number>(5);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Auto-load CSV on mount
@@ -195,7 +234,7 @@ export default function LottoGenius() {
 
         const currentHotNumbers = stats.hotNumbers.length > 0 ? stats.hotNumbers : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // Fallback
 
-        while (newGames.length < 5 && attempts < maxAttempts) {
+        while (newGames.length < targetGameCount && attempts < maxAttempts) {
             attempts++;
 
             // 1. Random Generation
@@ -257,6 +296,46 @@ export default function LottoGenius() {
 
         setGeneratedGames(newGames);
         setIsGenerating(false);
+    };
+
+    const handleDownload = () => {
+        if (generatedGames.length === 0) return;
+        const content = generatedGames.map((game, i) =>
+            `Game ${i + 1}: ${game.numbers.join(', ')} (Sum: ${game.sum}, Odd/Even: ${game.oddCount}:${6 - game.oddCount})`
+        ).join('\n');
+
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lotto_genius_${new Date().toISOString().slice(0, 10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const handleSend = async () => {
+        if (generatedGames.length === 0) return;
+        const content = generatedGames.map((game, i) =>
+            `[Lotto Genius] Game ${i + 1}: ${game.numbers.join(', ')}`
+        ).join('\n');
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: 'Lotto Genius Picks',
+                    text: content,
+                });
+            } catch (err) {
+                console.log('Share failed', err);
+            }
+        } else {
+            try {
+                await navigator.clipboard.writeText(content);
+                alert("결과가 클립보드에 복사되었습니다.");
+            } catch (err) {
+                alert("복사 실패");
+            }
+        }
     };
 
     return (
@@ -329,6 +408,21 @@ export default function LottoGenius() {
                                     </button>
                                 </div>
                             </div>
+
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-2">생성 게임 수 (0-50)</label>
+                                <div className="flex items-center space-x-3">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="50"
+                                        value={targetGameCount}
+                                        onChange={(e) => setTargetGameCount(parseInt(e.target.value))}
+                                        className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                    />
+                                    <span className="bg-slate-900 px-3 py-1 rounded text-white font-mono min-w-[3rem] text-center border border-slate-700">{targetGameCount}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -389,10 +483,12 @@ export default function LottoGenius() {
                             px-6 py-5 rounded-full font-bold text-lg
                             transition-all duration-300 transform hover:scale-105 active:scale-95
                             border border-slate-600 text-slate-400 hover:text-white hover:border-slate-500 hover:bg-slate-800
+                            flex items-center space-x-2
                             ${generatedGames.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
                         `}
                     >
-                        초기화
+                        <Trash2 className="w-5 h-5" />
+                        <span>초기화</span>
                     </button>
                 </div>
 
@@ -408,12 +504,31 @@ export default function LottoGenius() {
                 {/* Results Section */}
                 {generatedGames.length > 0 && (
                     <section className="space-y-4 animate-fade-in-up">
-                        <h3 className="text-xl font-bold text-white flex items-center space-x-2 border-l-4 border-emerald-500 pl-4">
-                            <span>추천 조합</span>
-                            <span className="text-sm font-normal text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
-                                5 Games
-                            </span>
-                        </h3>
+                        <div className="flex flex-col sm:flex-row justify-between items-center bg-slate-800/80 p-4 rounded-xl border-l-4 border-emerald-500 backdrop-blur">
+                            <h3 className="text-xl font-bold text-white flex items-center space-x-2 mb-4 sm:mb-0">
+                                <span>추천 조합</span>
+                                <span className="text-sm font-normal text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
+                                    {generatedGames.length} Games
+                                </span>
+                            </h3>
+
+                            <div className="flex space-x-2">
+                                <button
+                                    onClick={handleDownload}
+                                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm rounded-lg transition border border-slate-600"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    <span>저장</span>
+                                </button>
+                                <button
+                                    onClick={handleSend}
+                                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg transition shadow-lg shadow-indigo-500/20"
+                                >
+                                    <Share className="w-4 h-4" />
+                                    <span>전송</span>
+                                </button>
+                            </div>
+                        </div>
 
                         <div className="grid gap-4">
                             {generatedGames.map((game, index) => (
