@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { Upload, RefreshCw, BarChart2, ShieldCheck, Zap, AlertCircle, Info, TrendingUp, Settings } from 'lucide-react';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * LOTTO GENIUS - 통계적 균형 및 비인기 조합 필터 기반 로또 번호 생성기
@@ -97,7 +102,32 @@ export default function LottoGenius() {
         setStats({ avgSum, hotNumbers: sortedNums });
     }, [historyData]);
 
-    // --- CSV Parsing ---
+    // --- Supabase Data Fetching ---
+    useEffect(() => {
+        const fetchLottoData = async () => {
+            const { data, error } = await supabase
+                .from('lotto_draws')
+                .select('*')
+                .order('draw_no', { ascending: true }); // Ensure chronological order
+
+            if (error) {
+                console.error('Error fetching data:', error);
+                alert('데이터를 불러오는데 실패했습니다.');
+            } else if (data && data.length > 0) {
+                // Transform data format to match algorithm expectation: [num1, num2, ..., num6]
+                // Note: Bonus number is currently not used in main logic but available in data
+                const parsedData = data.map(record => [
+                    record.num1, record.num2, record.num3,
+                    record.num4, record.num5, record.num6
+                ]);
+                setHistoryData(parsedData);
+            }
+        };
+
+        fetchLottoData();
+    }, []);
+
+    // --- CSV Parsing (Legacy / Backup) ---
     const handleFileUpload = (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -269,26 +299,16 @@ export default function LottoGenius() {
                             <div>
                                 <label className="block text-sm text-slate-400 mb-2">과거 데이터 소스</label>
                                 <div className="flex space-x-2">
-                                    <button
-                                        onClick={() => fileInputRef.current.click()}
-                                        className="flex-1 flex items-center justify-center space-x-2 bg-slate-700 hover:bg-slate-600 text-white py-2 px-4 rounded-lg transition border border-slate-600"
-                                    >
-                                        <Upload className="w-4 h-4" />
-                                        <span>CSV 파일 업로드</span>
-                                    </button>
-                                    <input
-                                        type="file"
-                                        accept=".csv"
-                                        ref={fileInputRef}
-                                        onChange={handleFileUpload}
-                                        className="hidden"
-                                    />
+                                    <div className="flex-1 flex items-center justify-center space-x-2 bg-slate-800 text-slate-300 py-2 px-4 rounded-lg border border-slate-600">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        <span>Supabase DB 연동됨</span>
+                                    </div>
                                     <div className="px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-xs flex items-center text-slate-400">
                                         현재: {historyData.length}회차
                                     </div>
                                 </div>
                                 <p className="text-xs text-slate-500 mt-2">
-                                    * lotto_results.csv 파일을 업로드하면 더 정확한 분석이 가능합니다.
+                                    * 자동으로 최신 당첨 번호를 불러옵니다.
                                 </p>
                             </div>
 
