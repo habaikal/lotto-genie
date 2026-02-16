@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Upload, RefreshCw, BarChart2, ShieldCheck, Zap, TrendingUp, Settings, Download, Share, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import { RefreshCw, BarChart2, ShieldCheck, Zap, TrendingUp, Settings, Download, Share, Trash2 } from 'lucide-react';
 
 /**
  * LOTTO GENIUS - 통계적 균형 및 비인기 조합 필터 기반 로또 번호 생성기
@@ -100,27 +101,54 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: any) => (
 export default function LottoGenius() {
     // State
     const [historyData, setHistoryData] = useState<LottoDraw[]>([]);
-    const [lastRound, setLastRound] = useState<number>(0);
+
+
     const [tolerance, setTolerance] = useState(0.05); // 5% default
     const [generatedGames, setGeneratedGames] = useState<Game[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [stats, setStats] = useState<Stats>({ avgSum: 0, hotNumbers: [] });
     const [logs, setLogs] = useState<string[]>([]);
     const [targetGameCount, setTargetGameCount] = useState<number>(5);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+
 
     // Auto-load CSV on mount
-    // Auto-load CSV on mount
+    // Auto-load data from Supabase on mount
     useEffect(() => {
-        // Use imports.meta.env.BASE_URL to respect the 'base' config in vite.config.ts
-        const csvPath = `${import.meta.env.BASE_URL}lotto_results.csv?v=${new Date().getTime()}`;
-        fetch(csvPath)
-            .then(res => {
-                if (!res.ok) throw new Error("Failed to load CSV");
-                return res.text();
-            })
-            .then(text => processCSV(text))
-            .catch(err => console.log("Auto-load failed, waiting for user upload...", err));
+        const fetchLottoData = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('lotto_draws')
+                    .select('*')
+                    .order('draw_no', { ascending: true });
+
+                if (error) throw error;
+
+                if (data) {
+                    // Map Supabase data to the format expected by the app (array of numbers)
+                    // Schema: draw_no, date, num1, num2, num3, num4, num5, num6, bonus
+                    const formattedData: LottoDraw[] = data.map(record => [
+                        record.num1,
+                        record.num2,
+                        record.num3,
+                        record.num4,
+                        record.num5,
+                        record.num6
+                    ]);
+
+                    setHistoryData(formattedData);
+
+                    // Find the max draw number
+                    const maxDraw = data.reduce((max, record) => Math.max(max, record.draw_no), 0);
+
+
+                    console.log(`Loaded ${data.length} records. Last Round: ${maxDraw}`);
+                }
+            } catch (err) {
+                console.error("Failed to load data from Supabase:", err);
+            }
+        };
+
+        fetchLottoData();
     }, []);
 
     // --- Statistics Calculation ---
@@ -151,64 +179,9 @@ export default function LottoGenius() {
         setStats({ avgSum, hotNumbers: sortedNums });
     }, [historyData]);
 
-    // --- CSV Parsing ---
-    const processCSV = (text: string) => {
-        const lines = text.split('\n');
-        const parsedData: LottoDraw[] = [];
-        let maxRound = 0;
 
-        // Format: Round, N1, N2, N3, N4, N5, N6, Bonus
-        // We only want N1..N6 (indices 1..6)
 
-        lines.forEach((line) => {
-            // Skip empty lines
-            if (!line.trim()) return;
 
-            // Split by comma
-            const cols = line.split(',').map(s => s.trim());
-
-            // Check if we have enough columns (at least 7: Round + 6 numbers)
-            if (cols.length >= 7) {
-                const round = parseInt(cols[0]);
-                if (!isNaN(round) && round > maxRound) {
-                    maxRound = round;
-                }
-
-                // Try parsing columns 1 to 6
-                const potentialNumbers = cols.slice(1, 7).map(Number);
-
-                // Validate they are real numbers and within range 1-45
-                const validNumbers = potentialNumbers.filter(n => !isNaN(n) && n >= 1 && n <= 45);
-
-                if (validNumbers.length === 6) {
-                    parsedData.push(validNumbers);
-                }
-            }
-        });
-
-        if (parsedData.length > 0) {
-            setHistoryData(parsedData);
-            setLastRound(maxRound);
-            // Only alert if manually triggered or meaningful change? 
-            // Let's avoid annoying alerts on auto-load, but good to know it worked.
-            console.log(`Loaded ${parsedData.length} records. Last Round: ${maxRound}`);
-        }
-    };
-
-    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target?.result;
-            if (typeof text === 'string') {
-                processCSV(text);
-                alert("CSV 파일이 로드되었습니다.");
-            }
-        };
-        reader.readAsText(file);
-    };
 
     // --- Core Algorithm ---
     const generateLottoNumbers = async () => {
@@ -370,23 +343,13 @@ export default function LottoGenius() {
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm text-slate-400 mb-2">데이터베이스 상태</label>
-                                <div className="flex space-x-2">
-                                    <button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="flex-1 flex items-center justify-center space-x-2 bg-slate-700 hover:bg-slate-600 text-white py-2 px-4 rounded-lg transition border border-slate-600"
-                                    >
-                                        <Upload className="w-4 h-4" />
-                                        <span>CSV 업데이트</span>
-                                    </button>
-                                    <input
-                                        type="file"
-                                        accept=".csv"
-                                        ref={fileInputRef}
-                                        onChange={handleFileUpload}
-                                        className="hidden"
-                                    />
-                                    <div className="px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-xs flex items-center text-slate-400 font-mono">
-                                        Records: {lastRound || historyData.length}
+                                <div className="px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg flex justify-between items-center">
+                                    <div className="flex items-center space-x-2 text-emerald-400">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                        <span className="text-sm font-semibold">Supabase Connected</span>
+                                    </div>
+                                    <div className="text-xs text-slate-500 font-mono bg-slate-800 px-2 py-1 rounded border border-slate-700">
+                                        Total Records: {historyData.length > 0 ? historyData.length : '...'}
                                     </div>
                                 </div>
                             </div>
