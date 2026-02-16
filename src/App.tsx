@@ -111,24 +111,40 @@ export default function LottoGenius() {
     const [targetGameCount, setTargetGameCount] = useState<number>(5);
 
 
-    // Auto-load CSV on mount
     // Auto-load data from Supabase on mount
     useEffect(() => {
         const fetchLottoData = async () => {
             try {
-                // Fetch up to 2000 records to cover current history (approx 1211)
-                const { data, error } = await supabase
-                    .from('lotto_draws')
-                    .select('*')
-                    .order('draw_no', { ascending: true })
-                    .limit(2000);
+                let allData: any[] = [];
+                let page = 0;
+                const pageSize = 1000;
+                let hasMore = true;
 
-                if (error) throw error;
+                while (hasMore) {
+                    const { data, error } = await supabase
+                        .from('lotto_draws')
+                        .select('*')
+                        .order('draw_no', { ascending: true })
+                        .range(page * pageSize, (page + 1) * pageSize - 1);
 
-                if (data) {
+                    if (error) throw error;
+
+                    if (data && data.length > 0) {
+                        allData = [...allData, ...data];
+                        if (data.length < pageSize) {
+                            hasMore = false;
+                        } else {
+                            page++;
+                        }
+                    } else {
+                        hasMore = false;
+                    }
+                }
+
+                if (allData.length > 0) {
                     // Map Supabase data to the format expected by the app (array of numbers)
                     // Schema: draw_no, date, num1, num2, num3, num4, num5, num6, bonus
-                    const formattedData: LottoDraw[] = data.map(record => [
+                    const formattedData: LottoDraw[] = allData.map(record => [
                         record.num1,
                         record.num2,
                         record.num3,
@@ -140,10 +156,9 @@ export default function LottoGenius() {
                     setHistoryData(formattedData);
 
                     // Find the max draw number
-                    const maxDraw = data.reduce((max, record) => Math.max(max, record.draw_no), 0);
+                    const maxDraw = allData.reduce((max, record) => Math.max(max, record.draw_no), 0);
 
-
-                    console.log(`Loaded ${data.length} records. Last Round: ${maxDraw}`);
+                    console.log(`Loaded ${allData.length} records in total. Last Round: ${maxDraw}`);
                 }
             } catch (err) {
                 console.error("Failed to load data from Supabase:", err);
