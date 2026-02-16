@@ -338,7 +338,7 @@ export default function LottoGenius() {
                             <Zap className="w-6 h-6 text-white" fill="currentColor" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold text-white tracking-tight">Lotto Genius <span className="text-emerald-400">AI</span></h1>
+                            <h1 className="text-xl font-bold text-white tracking-tight">Lotto Genius <span className="text-emerald-400">AI</span> <span className="text-xs text-slate-500 font-normal ml-1">v1.2</span></h1>
                             <p className="text-xs text-slate-400">통계 기반 로또 예측 시스템</p>
                         </div>
                     </div>
