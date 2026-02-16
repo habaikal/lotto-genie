@@ -116,10 +116,12 @@ export default function LottoGenius() {
     useEffect(() => {
         const fetchLottoData = async () => {
             try {
+                // Fetch up to 2000 records to cover current history (approx 1211)
                 const { data, error } = await supabase
                     .from('lotto_draws')
                     .select('*')
-                    .order('draw_no', { ascending: true });
+                    .order('draw_no', { ascending: true })
+                    .limit(2000);
 
                 if (error) throw error;
 
@@ -346,10 +348,10 @@ export default function LottoGenius() {
                                 <div className="px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg flex justify-between items-center">
                                     <div className="flex items-center space-x-2 text-emerald-400">
                                         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                        <span className="text-sm font-semibold">Supabase Connected</span>
+                                        <span className="text-sm font-semibold">최종회차</span>
                                     </div>
-                                    <div className="text-xs text-slate-500 font-mono bg-slate-800 px-2 py-1 rounded border border-slate-700">
-                                        Total Records: {historyData.length > 0 ? historyData.length : '...'}
+                                    <div className="text-lg text-white font-bold font-mono bg-slate-800 px-3 py-1 rounded border border-slate-700">
+                                        {historyData.length > 0 ? historyData.length : '...'}회
                                     </div>
                                 </div>
                             </div>
