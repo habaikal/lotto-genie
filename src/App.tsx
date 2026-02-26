@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { RefreshCw, BarChart2, ShieldCheck, Zap, TrendingUp, Settings, Download, Share, Trash2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 /**
  * LOTTO GENIUS - 통계적 균형 및 비인기 조합 필터 기반 로또 번호 생성기
@@ -177,7 +178,7 @@ export default function LottoGenius() {
         // 1. Calculate Average Sum
         let totalSum = 0;
         const frequency: Record<number, number> = {};
-        
+
         // Track recency for cold numbers
         const lastAppearance: Record<number, number> = {};
 
@@ -196,7 +197,7 @@ export default function LottoGenius() {
         const sortedNums = Object.keys(frequency)
             .map(num => ({ num: parseInt(num), count: frequency[parseInt(num)] }))
             .sort((a, b) => b.count - a.count);
-            
+
         // 15주(15회차) 이상 미출현 번호 찾기
         const recentHistoryLimit = historyData.length - 15;
         const coldNumbers = [];
@@ -239,14 +240,14 @@ export default function LottoGenius() {
         };
 
         const currentHotNumbers = stats.hotNumbers.length > 0 ? stats.hotNumbers.map(n => n.num) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        
+
         // 룰렛 가중치 계산 O(1) 준비
         // 기본 가중치 10으로 시작. Hot=5(확률감소), Cold=30(확률증가 3배) 등.
         const weights: Record<number, number> = {};
-        for(let i=1; i<=45; i++) {
+        for (let i = 1; i <= 45; i++) {
             let weight = 10;
-            if(stats.coldNumbers.includes(i)) weight = 30; // 콜드 번호 가중치 UP
-            else if(currentHotNumbers.includes(i)) weight = 5; // 핫 번호 가중치 DOWN
+            if (stats.coldNumbers.includes(i)) weight = 30; // 콜드 번호 가중치 UP
+            else if (currentHotNumbers.includes(i)) weight = 5; // 핫 번호 가중치 DOWN
             weights[i] = weight;
         }
 
@@ -258,15 +259,15 @@ export default function LottoGenius() {
             while (numbers.size < 6) {
                 // 남은 번호들 중에서 룰렛 가중치 계산
                 let totalWeight = 0;
-                for(let i=1; i<=45; i++) {
-                    if(!numbers.has(i)) totalWeight += weights[i];
+                for (let i = 1; i <= 45; i++) {
+                    if (!numbers.has(i)) totalWeight += weights[i];
                 }
-                
+
                 let randomVal = Math.random() * totalWeight;
-                for(let i=1; i<=45; i++) {
-                    if(!numbers.has(i)) {
+                for (let i = 1; i <= 45; i++) {
+                    if (!numbers.has(i)) {
                         randomVal -= weights[i];
-                        if(randomVal <= 0) {
+                        if (randomVal <= 0) {
                             numbers.add(i);
                             break;
                         }
@@ -317,59 +318,59 @@ export default function LottoGenius() {
             if (oddCount === 0 || oddCount === 6 || oddCount === 1 || oddCount === 5) {
                 continue;
             }
-            
+
             // 2-5. 끝수 집중도 (동일 끝수 4개 이상 제한 - 신규)
             const endDigits = candidate.map(n => n % 10);
             const digitCounts: Record<number, number> = {};
             let hasFourSameEndDigit = false;
-            for(const digit of endDigits) {
+            for (const digit of endDigits) {
                 digitCounts[digit] = (digitCounts[digit] || 0) + 1;
-                if(digitCounts[digit] >= 4) {
+                if (digitCounts[digit] >= 4) {
                     hasFourSameEndDigit = true;
                     break;
                 }
             }
-            if(hasFourSameEndDigit) {
+            if (hasFourSameEndDigit) {
                 if (attempts % 100 === 0) addLog(`동일 끝수 4개 이상 배제`);
                 continue;
             }
-            
+
             // 2-6. 직전 회차 중복 (직전 당첨 번호 4개 이상 일치 제한 - 신규)
-            if(stats.lastDraw && stats.lastDraw.length > 0) {
+            if (stats.lastDraw && stats.lastDraw.length > 0) {
                 const prevMatchCount = candidate.filter(n => stats.lastDraw.includes(n)).length;
-                if(prevMatchCount >= 4) {
+                if (prevMatchCount >= 4) {
                     if (attempts % 100 === 0) addLog(`직전 회차 4개 이상 중복 배제`);
                     continue;
                 }
             }
-            
+
             // 2-7. 역대 1등 조합 회피 (과거 당첨 번호와 5개 이상 일치 제한 - 신규)
             let isPastWinner = false;
             // 성능을 위해 배열을 문자열이나 Set보다는 단순 교집합으로 빠르게 체크
-            for(let i=0; i<historyData.length; i++) {
+            for (let i = 0; i < historyData.length; i++) {
                 const hDraw = historyData[i];
                 let matchCount = 0;
-                for(let j=0; j<6; j++) {
-                    if(candidate.includes(hDraw[j])) matchCount++;
+                for (let j = 0; j < 6; j++) {
+                    if (candidate.includes(hDraw[j])) matchCount++;
                 }
-                
-                if(matchCount >= 5) {
+
+                if (matchCount >= 5) {
                     isPastWinner = true;
                     break;
                 }
             }
-            
-            if(isPastWinner) {
-                if(attempts % 10 === 0) addLog(`역대 1등(5개 이상) 조합 회피 필터 발동!`);
+
+            if (isPastWinner) {
+                if (attempts % 10 === 0) addLog(`역대 1등(5개 이상) 조합 회피 필터 발동!`);
                 continue;
             }
 
             // Success
             newGames.push({ numbers: candidate, sum, oddCount, hotCount });
         }
-        
-        if(attempts >= maxAttempts) {
-             addLog(`최대 시도 횟수(${maxAttempts}) 도달하여 생성 종료.`);
+
+        if (attempts >= maxAttempts) {
+            addLog(`최대 시도 횟수(${maxAttempts}) 도달하여 생성 종료.`);
         }
 
         setGeneratedGames(newGames);
@@ -378,38 +379,76 @@ export default function LottoGenius() {
 
     const handleDownload = () => {
         if (generatedGames.length === 0) return;
-        const content = generatedGames.map((game, i) =>
-            `Game ${i + 1}: ${game.numbers.join(', ')} (Sum: ${game.sum}, Odd/Even: ${game.oddCount}:${6 - game.oddCount})`
-        ).join('\n');
 
-        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `lotto_genius_${new Date().toISOString().slice(0, 10)}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
+        const data = generatedGames.map((game, i) => ({
+            '선택': `게임 ${i + 1}`,
+            '번호 1': game.numbers[0],
+            '번호 2': game.numbers[1],
+            '번호 3': game.numbers[2],
+            '번호 4': game.numbers[3],
+            '번호 5': game.numbers[4],
+            '번호 6': game.numbers[5],
+            '합계': game.sum,
+            '홀짝 비율': `${game.oddCount}:${6 - game.oddCount}`,
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Lotto Numbers");
+
+        XLSX.writeFile(workbook, `lotto_genius_${new Date().toISOString().slice(0, 10)}.xlsx`);
     };
 
     const handleSend = async () => {
         if (generatedGames.length === 0) return;
-        const content = generatedGames.map((game, i) =>
-            `[Lotto Genius] Game ${i + 1}: ${game.numbers.join(', ')}`
+
+        const data = generatedGames.map((game, i) => ({
+            '선택': `게임 ${i + 1}`,
+            '번호 1': game.numbers[0],
+            '번호 2': game.numbers[1],
+            '번호 3': game.numbers[2],
+            '번호 4': game.numbers[3],
+            '번호 5': game.numbers[4],
+            '번호 6': game.numbers[5],
+            '합계': game.sum,
+            '홀짝 비율': `${game.oddCount}:${6 - game.oddCount}`,
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Lotto Numbers");
+
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const file = new File([blob], `lotto_genius_${new Date().toISOString().slice(0, 10)}.xlsx`, { type: blob.type });
+
+        const contentStr = generatedGames.map((game, i) =>
+            `[Lotto Genius Pro] 게임 ${i + 1}: ${game.numbers.join(', ')}`
         ).join('\n');
 
-        if (navigator.share) {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({
-                    title: 'Lotto Genius Picks',
-                    text: content,
+                    files: [file],
+                    title: 'Lotto Genius Pro Picks',
+                    text: 'Lotto Genius Pro에서 생성된 로또 번호 엑셀 파일입니다.',
+                });
+            } catch (err) {
+                console.log('Share failed', err);
+            }
+        } else if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: 'Lotto Genius Pro Picks',
+                    text: contentStr,
                 });
             } catch (err) {
                 console.log('Share failed', err);
             }
         } else {
             try {
-                await navigator.clipboard.writeText(content);
-                alert("결과가 클립보드에 복사되었습니다.");
+                await navigator.clipboard.writeText(contentStr);
+                alert("기기에서 파일 공유 기능을 지원하지 않아 텍스트로 클립보드에 복사되었습니다. (파일을 얻으려면 다운로드 버튼을 이용하세요)");
             } catch (err) {
                 alert("복사 실패");
             }
