@@ -426,6 +426,7 @@ export default function LottoGenius() {
             `[Lotto Genius Pro] 게임 ${i + 1}: ${game.numbers.join(', ')}`
         ).join('\n');
 
+        let sharedFile = false;
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({
@@ -433,24 +434,37 @@ export default function LottoGenius() {
                     title: 'Lotto Genius Pro Picks',
                     text: 'Lotto Genius Pro에서 생성된 로또 번호 엑셀 파일입니다.',
                 });
+                sharedFile = true;
             } catch (err) {
-                console.log('Share failed', err);
+                if (err instanceof Error && err.name === 'AbortError') return;
+                console.log('File share failed, falling back to text', err);
             }
-        } else if (navigator.share) {
-            try {
-                await navigator.share({
-                    title: 'Lotto Genius Pro Picks',
-                    text: contentStr,
-                });
-            } catch (err) {
-                console.log('Share failed', err);
-            }
-        } else {
-            try {
-                await navigator.clipboard.writeText(contentStr);
-                alert("기기에서 파일 공유 기능을 지원하지 않아 텍스트로 클립보드에 복사되었습니다. (파일을 얻으려면 다운로드 버튼을 이용하세요)");
-            } catch (err) {
-                alert("복사 실패");
+        }
+
+        if (!sharedFile) {
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: 'Lotto Genius Pro Picks',
+                        text: contentStr,
+                    });
+                } catch (err) {
+                    if (err instanceof Error && err.name === 'AbortError') return;
+                    console.log('Text share failed, falling back to clipboard', err);
+                    try {
+                        await navigator.clipboard.writeText(contentStr);
+                        alert("웹 브라우저 환경 설정으로 인해 텍스트로 클립보드에 복사되었습니다.");
+                    } catch (e) {
+                        alert("복사 실패");
+                    }
+                }
+            } else {
+                try {
+                    await navigator.clipboard.writeText(contentStr);
+                    alert("기기에서 파일 공유 기능을 지원하지 않아 텍스트로 클립보드에 복사되었습니다. (파일을 얻으려면 다운로드 버튼을 이용하세요)");
+                } catch (err) {
+                    alert("복사 실패");
+                }
             }
         }
     };
