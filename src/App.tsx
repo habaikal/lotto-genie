@@ -40,7 +40,9 @@ const getBallStyle = (num: number) => {
 type LottoDraw = number[];
 type Stats = {
     avgSum: number;
-    hotNumbers: number[];
+    hotNumbers: { num: number, count: number }[]; // Store count for weighting
+    coldNumbers: number[]; // Track numbers that haven't appeared recently
+    lastDraw: number[]; // Store recent draw for checking against previous drawing
 };
 type Game = {
     numbers: number[];
@@ -106,9 +108,9 @@ export default function LottoGenius() {
     const [tolerance, setTolerance] = useState(0.05); // 5% default
     const [generatedGames, setGeneratedGames] = useState<Game[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [stats, setStats] = useState<Stats>({ avgSum: 0, hotNumbers: [] });
+    const [stats, setStats] = useState<Stats>({ avgSum: 0, hotNumbers: [], coldNumbers: [], lastDraw: [] });
     const [logs, setLogs] = useState<string[]>([]);
-    const [targetGameCount, setTargetGameCount] = useState<number>(5);
+    const [targetGameCount, setTargetGameCount] = useState<number>(50);
 
 
     // Auto-load data from Supabase on mount
@@ -175,25 +177,39 @@ export default function LottoGenius() {
         // 1. Calculate Average Sum
         let totalSum = 0;
         const frequency: Record<number, number> = {};
+        
+        // Track recency for cold numbers
+        const lastAppearance: Record<number, number> = {};
 
-        historyData.forEach(draw => {
+        historyData.forEach((draw, index) => {
             const sum = draw.reduce((a, b) => a + b, 0);
             totalSum += sum;
             draw.forEach(num => {
                 frequency[num] = (frequency[num] || 0) + 1;
+                lastAppearance[num] = index; // The higher the index, the more recent
             });
         });
 
         const avgSum = totalSum / historyData.length;
 
-        // 2. Identify Top 10 Hot Numbers
+        // 2. Identify Hot and Cold Numbers
         const sortedNums = Object.keys(frequency)
             .map(num => ({ num: parseInt(num), count: frequency[parseInt(num)] }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10)
-            .map(item => item.num);
+            .sort((a, b) => b.count - a.count);
+            
+        // 15주(15회차) 이상 미출현 번호 찾기
+        const recentHistoryLimit = historyData.length - 15;
+        const coldNumbers = [];
+        for (let i = 1; i <= 45; i++) {
+            if ((lastAppearance[i] ?? -1) < recentHistoryLimit) {
+                coldNumbers.push(i);
+            }
+        }
 
-        setStats({ avgSum, hotNumbers: sortedNums });
+        // Store recent draw
+        const lastDraw = historyData[historyData.length - 1] || [];
+
+        setStats({ avgSum, hotNumbers: sortedNums.slice(0, 10), coldNumbers, lastDraw });
     }, [historyData]);
 
 
@@ -206,82 +222,154 @@ export default function LottoGenius() {
         setGeneratedGames([]);
         setLogs([]);
 
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 100)); // UI block방지
 
         const newGames: Game[] = [];
         let attempts = 0;
-        const maxAttempts = 10000;
+        const maxAttempts = 50000;
 
         // Default stats if no data loaded
-        const currentAvgSum = stats.avgSum || 138; // 138 is theoretical avg sum of lotto (avg(1..45)=23 * 6 = 138)
+        const currentAvgSum = stats.avgSum || 138;
 
         const targetMin = currentAvgSum * (1 - tolerance);
         const targetMax = currentAvgSum * (1 + tolerance);
 
         const addLog = (msg: string) => {
-            setLogs(prev => [`[필터] ${msg}`, ...prev].slice(0, 5));
+            setLogs(prev => [`[Pro 필터] ${msg}`, ...prev].slice(0, 8));
         };
 
-        const currentHotNumbers = stats.hotNumbers.length > 0 ? stats.hotNumbers : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // Fallback
+        const currentHotNumbers = stats.hotNumbers.length > 0 ? stats.hotNumbers.map(n => n.num) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        
+        // 룰렛 가중치 계산 O(1) 준비
+        // 기본 가중치 10으로 시작. Hot=5(확률감소), Cold=30(확률증가 3배) 등.
+        const weights: Record<number, number> = {};
+        for(let i=1; i<=45; i++) {
+            let weight = 10;
+            if(stats.coldNumbers.includes(i)) weight = 30; // 콜드 번호 가중치 UP
+            else if(currentHotNumbers.includes(i)) weight = 5; // 핫 번호 가중치 DOWN
+            weights[i] = weight;
+        }
 
         while (newGames.length < targetGameCount && attempts < maxAttempts) {
             attempts++;
 
-            // 1. Random Generation
+            // 1. Roulette Wheel Selection (가중치 기반 추첨)
             const numbers = new Set<number>();
             while (numbers.size < 6) {
-                numbers.add(Math.floor(Math.random() * 45) + 1);
+                // 남은 번호들 중에서 룰렛 가중치 계산
+                let totalWeight = 0;
+                for(let i=1; i<=45; i++) {
+                    if(!numbers.has(i)) totalWeight += weights[i];
+                }
+                
+                let randomVal = Math.random() * totalWeight;
+                for(let i=1; i<=45; i++) {
+                    if(!numbers.has(i)) {
+                        randomVal -= weights[i];
+                        if(randomVal <= 0) {
+                            numbers.add(i);
+                            break;
+                        }
+                    }
+                }
             }
             const candidate = Array.from(numbers).sort((a, b) => a - b);
 
             // --- FILTER 1: Statistical Balance (Sum) ---
             const sum = candidate.reduce((a, b) => a + b, 0);
             if (sum < targetMin || sum > targetMax) {
-                if (attempts % 100 === 0) addLog(`합계(${sum}) 범위 초과`);
                 continue;
             }
 
-            // --- FILTER 2: Logic Filters ---
+            // --- FILTER 2: 강화된 Pro 로직 필터 ---
 
-            // 2-1. Consecutive Numbers (3+)
+            // 2-1. 연속 번호 (4연속 이상 제한 - 확장됨)
             let consecutiveCount = 0;
-            let hasThreeConsecutive = false;
+            let hasFourConsecutive = false;
             for (let i = 0; i < candidate.length - 1; i++) {
                 if (candidate[i] + 1 === candidate[i + 1]) {
                     consecutiveCount++;
-                    if (consecutiveCount >= 2) hasThreeConsecutive = true;
+                    if (consecutiveCount >= 3) hasFourConsecutive = true; // 3 implies 4 consecutive numbers (e.g. 1-2, 2-3, 3-4 = 3 ties)
                 } else {
                     consecutiveCount = 0;
                 }
             }
-            if (hasThreeConsecutive) {
-                if (attempts % 100 === 0) addLog(`3연속 번호 발견`);
+            if (hasFourConsecutive) {
+                if (attempts % 100 === 0) addLog(`4연속 번호 발견 배제`);
                 continue;
             }
 
-            // 2-2. Too Many Hot Numbers
+            // 2-2. 과열 번호 과다 (4개 이상 제한 - 확장됨)
             const hotCount = candidate.filter(n => currentHotNumbers.includes(n)).length;
-            if (hotCount >= 3) {
-                if (attempts % 100 === 0) addLog(`인기 번호 과다(${hotCount})`);
+            if (hotCount >= 4) {
+                if (attempts % 100 === 0) addLog(`인기 번호 4개이상 중복 배제`);
                 continue;
             }
 
-            // 2-3. Birthday Bias
+            // 2-3. 생일 패턴/낮은 번호 (모두 31 이하)
             const allBirthday = candidate.every(n => n <= 31);
             if (allBirthday) {
-                if (attempts % 100 === 0) addLog(`생일 패턴(저번호) 발견`);
                 continue;
             }
 
-            // 2-4. Odd/Even Balance
+            // 2-4. 홀짝 쏠림 (0:6, 6:0, 1:5, 5:1 제한)
             const oddCount = candidate.filter(n => n % 2 !== 0).length;
             if (oddCount === 0 || oddCount === 6 || oddCount === 1 || oddCount === 5) {
-                if (attempts % 100 === 0) addLog(`홀짝 불균형(${oddCount}:${6 - oddCount})`);
+                continue;
+            }
+            
+            // 2-5. 끝수 집중도 (동일 끝수 4개 이상 제한 - 신규)
+            const endDigits = candidate.map(n => n % 10);
+            const digitCounts: Record<number, number> = {};
+            let hasFourSameEndDigit = false;
+            for(const digit of endDigits) {
+                digitCounts[digit] = (digitCounts[digit] || 0) + 1;
+                if(digitCounts[digit] >= 4) {
+                    hasFourSameEndDigit = true;
+                    break;
+                }
+            }
+            if(hasFourSameEndDigit) {
+                if (attempts % 100 === 0) addLog(`동일 끝수 4개 이상 배제`);
+                continue;
+            }
+            
+            // 2-6. 직전 회차 중복 (직전 당첨 번호 4개 이상 일치 제한 - 신규)
+            if(stats.lastDraw && stats.lastDraw.length > 0) {
+                const prevMatchCount = candidate.filter(n => stats.lastDraw.includes(n)).length;
+                if(prevMatchCount >= 4) {
+                    if (attempts % 100 === 0) addLog(`직전 회차 4개 이상 중복 배제`);
+                    continue;
+                }
+            }
+            
+            // 2-7. 역대 1등 조합 회피 (과거 당첨 번호와 5개 이상 일치 제한 - 신규)
+            let isPastWinner = false;
+            // 성능을 위해 배열을 문자열이나 Set보다는 단순 교집합으로 빠르게 체크
+            for(let i=0; i<historyData.length; i++) {
+                const hDraw = historyData[i];
+                let matchCount = 0;
+                for(let j=0; j<6; j++) {
+                    if(candidate.includes(hDraw[j])) matchCount++;
+                }
+                
+                if(matchCount >= 5) {
+                    isPastWinner = true;
+                    break;
+                }
+            }
+            
+            if(isPastWinner) {
+                if(attempts % 10 === 0) addLog(`역대 1등(5개 이상) 조합 회피 필터 발동!`);
                 continue;
             }
 
             // Success
             newGames.push({ numbers: candidate, sum, oddCount, hotCount });
+        }
+        
+        if(attempts >= maxAttempts) {
+             addLog(`최대 시도 횟수(${maxAttempts}) 도달하여 생성 종료.`);
         }
 
         setGeneratedGames(newGames);
@@ -338,8 +426,8 @@ export default function LottoGenius() {
                             <Zap className="w-6 h-6 text-white" fill="currentColor" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold text-white tracking-tight">Lotto Genius <span className="text-emerald-400">AI</span> <span className="text-xs text-slate-500 font-normal ml-1">v1.2</span></h1>
-                            <p className="text-xs text-slate-400">통계 기반 로또 예측 시스템</p>
+                            <h1 className="text-xl font-bold text-white tracking-tight">Lotto Genius <span className="text-purple-400">PRO</span> <span className="text-xs text-slate-500 font-normal ml-1">v2.0</span></h1>
+                            <p className="text-xs text-slate-400">지능형 룰렛 가중치 기반 로또 예측 시스템</p>
                         </div>
                     </div>
                 </div>
@@ -417,8 +505,8 @@ export default function LottoGenius() {
                         />
                         <StatCard
                             title="최다 빈출 (Hot Numbers)"
-                            value={stats.hotNumbers.length > 0 ? stats.hotNumbers.slice(0, 5).join(', ') : "N/A"}
-                            subtext="Too hot to handle? (제외 필터 적용)"
+                            value={stats.hotNumbers.length > 0 ? stats.hotNumbers.slice(0, 5).map(n => n.num).join(', ') : "N/A"}
+                            subtext="Too hot to handle? (가중치 최소화 적용)"
                             icon={BarChart2}
                             colorClass="bg-orange-500"
                         />
@@ -435,7 +523,7 @@ export default function LottoGenius() {
               px-12 py-5 rounded-full font-bold text-xl tracking-wider
               text-white shadow-[0_0_40px_-10px_rgba(16,185,129,0.5)]
               transition-all duration-300 transform hover:scale-105 active:scale-95
-              ${(isGenerating || historyData.length === 0) ? 'bg-slate-700 cursor-not-allowed opacity-50' : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400'}
+              ${(isGenerating || historyData.length === 0) ? 'bg-slate-700 cursor-not-allowed opacity-50' : 'bg-gradient-to-r from-purple-600 to-indigo-500 hover:from-purple-500 hover:to-indigo-400'}
             `}
                     >
                         <span className="relative z-10 flex items-center space-x-3">
@@ -544,25 +632,25 @@ export default function LottoGenius() {
                 {/* Algorithm Info */}
                 <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mt-8">
                     <h4 className="text-slate-300 font-semibold mb-4 flex items-center">
-                        <ShieldCheck className="w-5 h-5 mr-2 text-indigo-400" />
-                        시스템 적용 알고리즘
+                        <ShieldCheck className="w-5 h-5 mr-2 text-purple-400" />
+                        Lotto Genius Pro 알고리즘
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-400">
                         <div className="flex items-start space-x-2">
-                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-emerald-500 shrink-0"></div>
-                            <p><strong>합계 필터:</strong> {stats.avgSum > 0 ? `역대 평균(${stats.avgSum.toFixed(0)})` : '평균'} 기준 ±{(tolerance * 100).toFixed(0)}% 이내</p>
+                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-purple-500 shrink-0"></div>
+                            <p><strong>가중치 룰렛:</strong> 장기 미출현 번호(가중치UP), 최다 빈출(가중치DOWN) 기반 지능형 추출</p>
                         </div>
                         <div className="flex items-start space-x-2">
-                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-emerald-500 shrink-0"></div>
-                            <p><strong>연속 번호:</strong> 3연속 번호 제외</p>
+                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-purple-500 shrink-0"></div>
+                            <p><strong>디펜시브 필터:</strong> 과거 1등 번호 5개 이상 일치 배제, 직전 당첨 번호 4개이상 중복 배제</p>
                         </div>
                         <div className="flex items-start space-x-2">
-                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-emerald-500 shrink-0"></div>
-                            <p><strong>과열 번호:</strong> 인기 번호 3개 이상 중복 제외</p>
+                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-purple-500 shrink-0"></div>
+                            <p><strong>패턴 필터:</strong> 4연속 번호 제외, 끝자리 4개 이상 중복 제외, 인기번호 4개 이상 중복 제외</p>
                         </div>
                         <div className="flex items-start space-x-2">
-                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-emerald-500 shrink-0"></div>
-                            <p><strong>패턴 제거:</strong> 생일 패턴(1~31) 및 홀짝 쏠림 제외</p>
+                            <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-purple-500 shrink-0"></div>
+                            <p><strong>기본 밸런스:</strong> 전체 합계 분석(±{tolerance * 100}%), 극단적 홀짝(6:0) 및 생일번호(1~31) 제한</p>
                         </div>
                     </div>
                 </section>
