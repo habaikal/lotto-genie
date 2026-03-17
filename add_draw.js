@@ -48,8 +48,18 @@ try {
     console.log("🔄 Supabase 동기화 시작...");
     // Use --env-file=.env to load environment variables for the migration script
     execSync('node --env-file=.env migrate_to_supabase.js', { stdio: 'inherit' });
-    console.log("\n🎉 업데이트가 완료되었습니다!");
-    console.log("👉 이제 'git add . && git commit -m \"update draw\" && git push origin main' 명령어로 GitHub에 반영하세요.");
+
+    // 4. GitHub Push
+    console.log("🚀 GitHub 저장소에 변경사항 푸시 중...");
+    execSync('git add public/lotto_results.csv dist/lotto_results.csv add_draw.js package.json', { stdio: 'inherit' });
+    execSync(`git commit -m "Update lotto results for draw ${drawNo}"`, { stdio: 'inherit' });
+    execSync('git push', { stdio: 'inherit' });
+
+    // 5. GitHub Pages Deploy
+    console.log("🌐 GitHub Pages 웹 화면 자동 배포 중...");
+    execSync('npm run deploy', { stdio: 'inherit' });
+
+    console.log("\n🎉 모든 업데이트 및 자동 배포가 완료되었습니다!");
 
 } catch (error) {
     console.error("❌ 오류 발생:", error);
