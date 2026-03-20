@@ -480,7 +480,7 @@ export default function LottoGenius() {
                         </div>
                         <div>
                             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-500 to-amber-700 tracking-tighter">
-                                LOTTO GENIUS <span className="text-amber-500/70 font-light tracking-normal text-xl ml-1">PRO</span>
+                                LOTTO GENIE
                             </h1>
                             <p className="text-xs text-amber-500/60 uppercase tracking-widest mt-1 font-medium">Premium AI Prediction Engine</p>
                         </div>
