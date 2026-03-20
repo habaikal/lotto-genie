@@ -106,7 +106,7 @@ export default function LottoGenius() {
     const [historyData, setHistoryData] = useState<LottoDraw[]>([]);
 
 
-    const [tolerance, setTolerance] = useState(0.05); // 5% default
+    const [tolerance] = useState(0.05); // 5% default
     const [generatedGames, setGeneratedGames] = useState<Game[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [stats, setStats] = useState<Stats>({ avgSum: 0, hotNumbers: [], coldNumbers: [], lastDraw: [] });
@@ -518,18 +518,9 @@ export default function LottoGenius() {
                             <div>
                                 <label className="block text-xs uppercase tracking-widest text-neutral-500 mb-2">예측 허용 범위 (Tolerance)</label>
                                 <div className="flex bg-black/40 rounded-xl p-1.5 border border-neutral-800">
-                                    <button
-                                        onClick={() => setTolerance(0.02)}
-                                        className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all duration-300 ${tolerance === 0.02 ? 'bg-gradient-to-r from-amber-600 to-yellow-600 text-white shadow-lg shadow-amber-900/20' : 'text-neutral-500 hover:text-amber-200'}`}
-                                    >
-                                        Strict (±2%)
-                                    </button>
-                                    <button
-                                        onClick={() => setTolerance(0.05)}
-                                        className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all duration-300 ${tolerance === 0.05 ? 'bg-gradient-to-r from-amber-600 to-yellow-600 text-white shadow-lg shadow-amber-900/20' : 'text-neutral-500 hover:text-amber-200'}`}
-                                    >
-                                        Standard (±5%)
-                                    </button>
+                                    <div className="flex-1 py-2.5 text-sm font-medium rounded-lg text-center bg-gradient-to-r from-amber-600 to-yellow-600 text-white shadow-lg shadow-amber-900/20 cursor-default">
+                                        Standard
+                                    </div>
                                 </div>
                             </div>
 
@@ -555,7 +546,7 @@ export default function LottoGenius() {
                         <StatCard
                             title="평균 합계 (Avg Sum)"
                             value={stats.avgSum > 0 ? stats.avgSum.toFixed(1) : "N/A"}
-                            subtext={stats.avgSum > 0 ? `Target: ${(stats.avgSum * (1 - tolerance)).toFixed(0)} ~ ${(stats.avgSum * (1 + tolerance)).toFixed(0)}` : "데이터 로드 필요"}
+                            subtext={stats.avgSum > 0 ? "" : "데이터 로드 필요"}
                             icon={TrendingUp}
                             colorClass="text-amber-500 bg-amber-500/10 border border-amber-500/20"
                         />
